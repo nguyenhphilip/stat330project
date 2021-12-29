@@ -1,0 +1,27 @@
+{
+    "id": "06F22FD5",
+    "path": "~/Desktop/CSDS/bayes-stats/project/adiantum_pca/Adiantum_PCA.Rmd",
+    "project_path": "adiantum_pca/Adiantum_PCA.Rmd",
+    "type": "r_markdown",
+    "hash": "2444974879",
+    "contents": "",
+    "dirty": false,
+    "created": 1636399704494.0,
+    "source_on_save": false,
+    "relative_order": 1,
+    "properties": {
+        "chunk_output_type": "console",
+        "cursorPosition": "135,32",
+        "scrollLine": "0",
+        "docOutlineVisible": "1",
+        "Source": "Source"
+    },
+    "folds": "",
+    "lastKnownWriteTime": 1636400051,
+    "encoding": "UTF-8",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1636400051730,
+    "read_only": false,
+    "read_only_alternatives": []
+}

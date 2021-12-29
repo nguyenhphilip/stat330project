@@ -1,0 +1,79 @@
+"CMAP.GI50" "CMAP.TGI" "CMAP.LC50"
+"8-azaguanine" -0.3 -0.6 -0.6
+"acetylsalicylic acid" 0 0 0
+"allantoin" -0.6 -0.6 -0.6
+"altretamine" -0.9 -0.9 -0.9
+"alvespimycin" 0.9 -1.6 -2.4
+"amitriptyline" -0.2 -0.600000000000001 -0.9
+"amphotericin B" -0.800000000000001 -1.2 -1.4
+"anisomycin" 2.9 2.1 -0.8
+"asiaticoside" -0.800000000000001 -1.2 -1.4
+"benzylpenicillin" -1 -1 -1
+"bergenin" -0.9 -0.9 -0.9
+"betulinic acid" -0.3 -0.8 -1.1
+"bisacodyl" 1.4 -0.4 -1
+"boldine" -0.9 -0.9 -0.9
+"canadine" -0.9 -0.9 -0.9
+"carbarsone" -0.8 -0.8 -0.8
+"cephaeline" 3.2 1.9 -1.4
+"chenodeoxycholic acid" -0.5 -1 -1
+"chloramphenicol" -0.9 -0.9 -0.9
+"cinchonine" -0.9 -0.9 -0.9
+"coralyne" -0.9 -1 -1
+"dequalinium chloride" 0.9 0.300000000000001 -1.1
+"dinoprost" -1.1 -1.1 -1.1
+"diphenhydramine" -0.9 -0.9 -0.9
+"domperidone" -0.399999999999999 -0.699999999999999 -1
+"econazole" 0 -0.5 -0.8
+"emetine" 3.3 0.9 0.9
+"flucytosine" -0.5 -0.5 -0.5
+"fluorometholone" -1 -1 -1
+"fulvestrant" 2 -2 -2
+"geldanamycin" 3.3 -0.9 -1.5
+"genistein" -1 -1 -1
+"griseofulvin" 0 -1 -1
+"homatropine" -1 -1 -1
+"isoflupredone" -1 -1 -1
+"lanatoside C" 1.8 0.899999999999999 -0.300000000000001
+"letrozole" -2.6 -2.6 -2.6
+"lithocholic acid" -0.6 -1 -1
+"lycorine" 1.7 0.8 -0.300000000000001
+"megestrol" -1 -1 -1
+"myricetin" -0.2 -0.5 -0.800000000000001
+"nalidixic acid" -0.8 -0.8 -0.8
+"naringin" -1.2 -1.2 -1.2
+"nordihydroguaiaretic acid" -1.4 -1.7 -1.9
+"nortriptyline" -0.100000000000001 -0.4 -0.7
+"nystatin" -0.7 -1 -1.3
+"ouabain" 2.4 1.2 -0.5
+"palmatine" -1 -1 -1
+"pentamidine" -0.100000000000001 -0.7 -1.2
+"phenformin" -0.8 -0.8 -0.8
+"pilocarpine" -0.8 -0.8 -0.8
+"Prestwick-665" -0.9 -0.9 -0.9
+"primaquine" -0.399999999999999 -0.6 -0.899999999999999
+"progesterone" -0.300000000000001 -0.7 -0.9
+"promethazine" -0.4 -0.600000000000001 -0.800000000000001
+"raloxifene" 1.9 -0.3 -0.8
+"saquinavir" -0.6 -1 -1.3
+"securinine" 0.0999999999999996 -0.600000000000001 -0.7
+"seneciphylline" -0.9 -0.9 -0.9
+"sirolimus" 1.9 -2.8 -3.2
+"sisomicin" -1.6 -1.6 -1.6
+"solanine" -0.5 -0.8 -1.1
+"solasodine" -0.6 -1 -1
+"sparteine" -0.8 -0.8 -0.8
+"spectinomycin" -1 -1 -1
+"streptozocin" -1.6 -1.6 -1.7
+"tanespimycin" 1.8 -1.3 -1.8
+"terconazole" -0.3 -0.6 -0.899999999999999
+"testosterone" -0.300000000000001 -0.800000000000001 -0.9
+"tetrandrine" -0.100000000000001 -0.5 -0.8
+"theophylline" -0.7 -0.7 -0.7
+"thioguanosine" 1.5 -0.800000000000001 -0.9
+"thioridazine" 0.6 0.3 0
+"tretinoin" -0.5 -0.9 -0.9
+"triflupromazine" -0.3 -0.6 -0.9
+"valproic acid" -2.2 -2.7 -2.7
+"vincamine" -1 -1 -1
+"vorinostat" 0.6 -0.7 -1

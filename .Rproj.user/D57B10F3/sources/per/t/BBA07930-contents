@@ -1,0 +1,707 @@
+---
+title: "Bayesian Statistics (STAT 330) Assignment 3"
+author: "Philip Nguyen"
+date: "10/18/2021"
+output:
+  pdf_document:
+    latex_engine: xelatex
+  html_document: default
+always_allow_html: true
+urlcolor: blue
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(broom)
+library(purrr)
+library(brms)
+library(rstan)
+theme_set(theme_light())
+```
+
+
+# 1 Warm Up
+
+## 1.1 Pattern Recognition
+
+$$
+Y_i = \text{Normal}(\mu_i, \sigma^{2})
+$$
+$$
+\mu_i = \sin(\mu X_i)\cos(\upsilon X_i)
+$$
+
+The model is not linear regression since two individual weights, $\mu$ and $\upsilon$, are being estimated to describe the relationship between a single predictor $X$ and response $Y$. The model would be linear regression if $\mu_i = \beta\sin(X_i)\cos(X_i)$ where $\beta$ is an estimated coefficient for the product of $\sin(X_i)\cos(X_i)$.
+
+## 1.2 Where does MCMC stand?
+
+One advantage of MCMC over the use of conjugate priors is that MCMC allows you to sample from and do inference on complex, intractable distributions that would otherwise be impossible to compute  (practically speaking). MCMC also allows for higher model complexity in terms of encoding a wider range of priors. We may want to use conjugate priors though if the problem is simple enough since we would have the exact form of the posterior distribution. 
+
+Compared to quadratic approximation, MCMC doesn't require that the distribution being estimated is unimodal and symmetric since it isn't limited to using a normal distribution for approximating the posterior. However one may want to use quadratic approximation when the dataset is large and the above conditions are met.
+
+## 1.3 Designing samplers
+
+Given that we have the posterior distribution $P(\theta|X)$, we need to determine the transition probabilities that dictate movement from one state in the Markov chain to the next in order to sample using the MH algorithm. The transition probability can be factored into the proposal $j$ and acceptance $A$. We want to find $j$ and $A$ that satisfy the detailed balance condition as well as aperiodicity and irreducibility to construct a Markov chain that has a stationary distribution from which we can sample.
+
+
+## 1.4 HMC Limitations
+
+Hamiltonian Monte Carlo cannot handle discrete parameters. It requires computation of the gradient of the parameter vector in order to determine the direction of where the next "step" will be on the log posterior, which is defined only for continuous functions. 
+
+# 2 Hello Bayesian World
+
+## 2.1 Conjugate Priors
+
+The model is
+
+$$
+X_i \overset{i.i.d.}{\sim} \text{Poisson}(\lambda)
+$$
+$$
+\lambda \sim \text{Gamma}(\alpha, \beta)
+$$
+$$
+\alpha = 1
+$$
+$$
+\beta = 1
+$$
+
+To find the posterior distribution of this model, we first compute the likelihood of the Poisson distribution by taking the product of the Poisson PDF evaluated at every data point for a given rate parameter $\lambda$. For $N$ data points this gives us:
+
+$$
+L(\text{Poisson}(\lambda)) = \prod_i^{N}\frac{\lambda^{X_i}}{(X_i)!}\cdot e^{-\lambda}
+$$
+$$
+= \frac{\lambda^{[\sum_i^{N} X_i]}}{\prod_i^{N}X_i!} e^{(-\lambda )N}.
+$$
+
+We then multiply the likelihood by the Gamma function yielding
+
+$$
+L(\text{Poisson}(\lambda)) \times \text{Gamma}(\alpha, \beta) = \frac{\lambda^{[\sum_i^{N} X_i]}}{\prod_i^{N}X_i!} e^{(-\lambda )N} \cdot [\frac{\beta^{\alpha}}{\Gamma(\alpha)}\lambda^{\alpha - 1}e^{-\beta \lambda}].
+$$
+
+Rearrange and combine terms:
+
+$$
+= \frac{\beta^{\alpha}}{[\prod_i^{N}X_i!] \cdot \Gamma(\alpha)} \cdot \lambda^{[\sum_i^{N} X_i]} \cdot \lambda^{\alpha - 1} \cdot e^{(-\lambda )N} \cdot e^{-\beta \lambda} 
+$$
+$$
+= \frac{\beta^{\alpha}}{[\prod_i^{N}X_i!] \cdot \Gamma(\alpha)} \cdot \lambda^{([\sum_i^{N} X_i] + \alpha - 1)} \cdot e^{(-\lambda )N - \beta\lambda}
+$$
+$$
+= \frac{\beta^{\alpha}}{[\prod_i^{N}X_i!] \cdot \Gamma(\alpha)} \cdot \lambda^{([\sum_i^{N} X_i] + \alpha - 1)} \cdot e^{-\lambda (N + \beta)}.
+$$
+From the above equation we know that the posterior distribution is proportional to the likelihood of the Poisson distribution times the Gamma distribution, which ends up being the desired result, a Gamma distribution with updated parameter values $\text{Gamma}(\sum_i^N X_i + \alpha, \beta + N)$:
+
+$$
+L(\text{Poisson}(\lambda)) \times \text{Gamma}(\alpha, \beta) = \frac{\beta^{\alpha}}{[\prod_i^{N}X_i!] \cdot \Gamma(\alpha)} \cdot \lambda^{([\sum_i^{N} X_i] + \alpha - 1)} \cdot e^{-\lambda (N + \beta)}
+$$
+$$
+\propto \frac{\beta^{\alpha}}{\Gamma(\alpha)} \cdot \lambda^{([\sum_i^{N} X_i] + \alpha - 1)} \cdot e^{-\lambda (N + \beta)} = \text{Gamma}\big(\sum_i^N X_i + \alpha, \beta + N\big).
+$$
+
+The plot of the exact posterior distribution is given below:
+
+```{r, message = FALSE, warning = FALSE, results=FALSE}
+
+# Gamma function
+set.seed(123)
+radioactive <- read_csv("radioactive.csv") %>%
+  # get counts per 7.5s interval
+  uncount(Nk)
+
+# draw samples from gamma
+exact <- rgamma(10000, 
+                shape = 1 + sum(radioactive$k), 
+                rate = 1 + nrow(radioactive)) %>%
+  data.frame() %>%
+  rename(lambda = '.')
+
+# plot
+exact %>%
+  ggplot(aes(x = lambda)) +
+  geom_histogram() +
+  geom_vline(xintercept = mean(exact$lambda), 
+             color = 'red') +
+  labs(title = "10000 draws from Posterior using updated Gamma") +
+  annotate("text", 
+           x = 3.94, 
+           y = 800,
+           label = paste("mean =", round(mean(exact$lambda),2)), 
+           color = 'red')
+
+```
+
+## 2.2 Quadratic approximation
+
+```{r, message = FALSE, warning = FALSE, results=FALSE}
+# Quadratic Approximation
+library(rethinking)
+
+# fit using QUAP
+fit <- quap(
+  alist(
+    k ~ dpois(lambda),
+    lambda ~ dgamma(1, 1)
+  ),
+  data = radioactive
+)
+
+# grab samples
+l_samples <- extract.samples(fit, n = 10000)
+
+# plot
+
+l_samples %>%
+  ggplot(aes(x = lambda)) +
+  geom_histogram() +
+  labs(title = "10000 draws from Posterior using QA",
+       y = "count") +
+  geom_vline(xintercept = mean(l_samples$lambda), 
+             color = 'red') +
+  annotate("text", 
+           x = 3.93, 
+           y = 800, 
+           label = paste("mean =", round(mean(l_samples$lambda),2)), 
+           color = 'red')
+```
+
+## 2.3 Hamiltonian Monte Carlo
+
+```{r, message = FALSE, warning = FALSE, results=FALSE}
+
+# specify form of data
+d <- list(X = radioactive$k,
+          n = nrow(radioactive))
+
+# fit data
+yay_stan <- stan(file = "q2.stan",
+                 data = d,
+                 iter = 5000)
+
+# extract posterior samples
+stan_samples <- extract(yay_stan) %>%
+  data.frame()
+
+# plot
+
+stan_samples %>%
+  ggplot(aes(lambda)) +
+  geom_histogram() +
+  geom_vline(xintercept = mean(stan_samples$lambda), color = 'red') + 
+  labs(title = "10000 draws from Posterior using HMC") +
+  annotate(geom = "text",
+           x = 3.93,
+           y = 1000,
+           label = paste("mean = ", round(mean(stan_samples$lambda), 2)), color = 'red')
+```
+
+## 2.4 Comparison
+
+Looking at the means and 95% HDIs of each posterior distribution below, we see that each method returns estimates for $\lambda$ that are virtually equivalent to each other:
+
+```{r, message = FALSE, warning = FALSE}
+library(HDInterval)
+library(kableExtra)
+
+# compute 95% HDIs
+
+compare <- rbind(
+  hdi(exact$lambda),
+  hdi(l_samples$lambda),
+  hdi(stan_samples$lambda)
+  )
+
+# create table with hDIs and means
+
+compare %>%
+  data.frame() %>%
+  mutate(method = c("Gamma", "Quadratic", "HMC"),
+         mean = purrr::map_dbl(tibble(exact$lambda,
+                                   l_samples$lambda,
+                                   stan_samples$lambda), mean)) %>%
+  mutate(mean = round(mean, 3),
+         lower = round(lower, 3),
+         upper = round(upper, 3)) %>%
+  select(method, mean, lower, upper) %>%
+  kable()
+
+```
+
+
+# 3 Smooth the curve
+
+## 3.1 Setup: creating splines
+
+```{r, message = FALSE, warning = FALSE, results=FALSE}
+library(splines)
+covid <- read.csv("covid_vt.csv")
+
+B <- covid$day_passed %>% 
+  # 10 knots
+  # 13 basis functions
+  bs(df = 13, degree = 3) 
+
+B %>%
+  data.frame() %>%
+  bind_cols(covid) %>%
+  pivot_longer(contains("X"), 
+               names_to = "basis_function", 
+               values_to = "basis_value") %>%
+  ggplot(aes(x = day_passed, y = basis_value, group = basis_function, color = basis_function)) +
+  geom_line() +
+  labs(y = "basis value",
+       x = "days passed")
+
+# choose priors over alpha, K = 13 betas, and sigma.
+
+```
+
+## 3.2 Setup: priors
+
+For $\alpha$, the average number of new cases per day, there seems to be a moderate range in Vermont. There weren't many cases at the beginning of the pandemic, but that fluctuated as the pandemic waned and peaked over a few key periods. Therefore a wide, relatively uninformed Normal prior seems appropriate here:
+
+$$
+\alpha \sim \text{Normal}(200, 75)
+$$
+
+As for the change in new cases per day, we know there weren't many new cases early on in the pandemic, so the $\beta$s for earlier time points should be low, while perhaps in the middle and toward the present day new cases peaked and stayed consistent day to day with some variation. Perhaps another normal prior over the betas will capture this:
+
+$$
+\beta \sim \text{Normal}(0,20)
+$$
+
+As for $\sigma$ an exponential distribution with rate parameter $1$ as the prior seems appropriate since I don't expect too much day to day deviation in the number of cases, while leaving room for sudden changes as we have experienced:
+
+$$
+\sigma \sim \text{Exponential}(1)
+$$
+
+## Prior Predictive Check
+
+```{r, message = FALSE, warnings = FALSE, results=FALSE, eval = FALSE}
+
+# num samples
+n <- 1000
+# number of basis functions
+k <- 13 
+
+prior_df <- tibble(draw = seq_len(n),
+       # draw n intercept values
+       a = rnorm(n, 200, 75),
+       # for each draw we want a SET of
+       # 13 weights. Store as list in our giant df
+       w = purrr::map(seq_len(n),
+                      function(x, k) {
+                        w <- rnorm(n = k, 0, 20)
+                        # return vector of weights
+                        return(w)
+                      },
+                      k = k)) %>%
+  mutate(mu = purrr::map2(a, w, function(a, w, b){
+    # matrix multiply each vector of weights with the basis matrix
+    res <- b %*% w
+    # add intercept to the result
+    res <- res + a
+    # store result as data frame 
+    res <- res %>%
+      as_tibble(.name_repair = ~".value") %>%
+      mutate(day_passed = covid$day_passed, 
+             .before = 1
+             )
+    # return as data frame and store in original data frame
+    return(res)
+    }, b = B)) %>%
+  unnest(cols = mu)
+
+prior_df %>%
+  ggplot(aes(x = day_passed,
+             y = .value)) +
+  geom_line(aes(group = draw), alpha = 0.1) +
+  labs(x = "days passed",
+       y = "num new cases",
+       title = "Prior Predictive Check (n=1000 samples)")
+
+# ggsave(filename = "q3-2g.png", width = 5, height = 3, units = "in")
+
+```
+
+![](q3-2g.png)
+
+The priors produce a reasonable set of predictions. Most of the lines are fairly linear, without any dramatic jumps in number of new cases, which we know did happen in waves, but the posterior should look more reasonable once we update the model with the actual data.
+
+## 3.3 Fitting the Curve
+
+```{r, message = FALSE, warnings = FALSE, results = FALSE}
+
+# fit model with R Stan
+
+q3dat <- list(B = B,
+              K = 13,
+              n = nrow(covid),
+              Y = covid$num_new_cases)
+
+q3stan <- stan(file = "q3.stan", data = q3dat)
+```
+
+```{r, message = FALSE, warnings = FALSE}
+# print completed stan code
+print(get_stanmodel(q3stan))
+```
+
+## 3.4 Fit quality
+
+```{r, message = FALSE, warnings = FALSE, results=FALSE}
+#diagnostics and effect estimates 
+print(q3stan)
+# trace plots - looks good!
+traceplot(q3stan)
+```
+
+## 3.5 Posterior predictive distribution
+
+```{r, message = FALSE, warnings = FALSE, results=FALSE, eval = FALSE}
+
+# using BRMS for easier posterior predictive check of Spline model
+
+q3brm <- brm(data = covid %>% mutate(B = B),
+    family = gaussian,
+    formula = num_new_cases ~ 1 + B,
+    prior = c(prior(normal(200, 75), class = Intercept),
+              prior(normal(0,20), class = b),
+              prior(exponential(1), class = sigma)),
+    iter = 4000,
+    warmup = 1000,
+    chains = 4,
+    cores = 4,
+    seed = 5
+    )
+
+ppd <- posterior_predict(q3brm) %>%
+  data.frame() %>%
+  set_names(001:619) %>%
+  sample_n(1000) %>%
+  pivot_longer(1:619, names_to = "day_passed") %>%
+  mutate(day_passed = as.integer(day_passed))
+
+
+# the magical Fitted function
+# draws mean values 
+f <- fitted(q3brm) %>%
+  data.frame() %>%
+  bind_cols(covid)
+
+ggplot() +
+  geom_point(data = ppd, aes(x = day_passed, y = value), alpha = 0.01, size = 0.05, color = "yellow") +
+  geom_ribbon(data = f, aes(x = day_passed, y = Estimate, ymin = Q2.5, ymax = Q97.5), fill = "red", alpha = 0.7) +
+  geom_point(data = f, aes(day_passed, num_new_cases), color = 'blue', alpha = 0.5) +
+  geom_point(data = f, aes(day_passed, Estimate), size = 0.1, color = "green", alpha = 0.5) +
+  geom_hline(yintercept = 0) +
+  labs(title = "Posterior Predictive Check",
+       y = "Number of New Cases",
+       x = "Number of Days Passed",
+       subtitle = paste0("Green line = mean of predicted values (with 95% CI in red)\n",
+                        "Blue points = actual values\n",
+                        "Yellow points = predicted points"))
+
+# ggsave(filename = "q3post1.png", width = 5, height = 3, units = "in")
+
+```
+
+![](q3post1.png)
+
+The model fits the data pretty well except for values around day $0$. We also see that there are some values being predicted below 0 as indicated by the yellow points. However if we take the mean of the values at each number of day passed, the model does well. I think this may also be due to the `brms` package not being able to set a lower bound on the intercept value.
+
+```{r, include = FALSE, message = FALSE, echo = FALSE, eval = FALSE}
+
+# another way to do the posterior predictive check
+
+# smaller_q3 <- q3samples %>%
+#   sample_n(1000)
+# 
+# # regression lines and predicted data points
+# 
+# t <- smaller_q3 %>%
+#   mutate(idx = seq_len(1000)) %>%
+#   pivot_longer(contains("beta"), names_to = "weights") %>%
+#   group_by(idx) %>%
+#   summarize(w = list(value)) %>%
+#   bind_cols(smaller_q3) %>%
+#   select(-contains("beta")) %>%
+#    mutate(mu = purrr::map2(alpha, w, function(a, w, b){
+#     # matrix multiply each vector of weights with the basis matrix
+#     res <- b %*% w
+#     # add intercept to the result
+#     res <- res + a
+#     # store result as data frame 
+#     res <- res %>%
+#       as_tibble(.name_repair = ~"mu") %>%
+#       mutate(day_passed = covid$day_passed, 
+#              .before = 1
+#              )
+#     # return as data frame and store in original data frame
+#     return(res)
+#     }, b = B)) %>%
+#   unnest(cols = mu) %>%
+#   mutate(y_hat = rnorm(n(), mu, sigma))
+```
+
+## 3.6 Playing with assumptions
+
+```{r, message = FALSE, warning = FALSE, results=FALSE}
+# What happens when you increase or decrease the number of knots? 
+
+# decrease knots (2)
+
+b2 <- covid$day_passed %>% 
+  bs(df = 5, degree = 3) 
+
+b2dat <- list(B = b2,
+              K = 5,
+              n = nrow(covid),
+              Y = covid$num_new_cases)
+
+b2stan <- stan(file = "q3.stan", data = b2dat)
+```
+
+The diagnostics look good for decreasing the number of knots from 13 to 2:
+
+```{r, message = FALSE, warning = FALSE}
+
+print(b2stan)
+
+```
+
+How about the posterior distribution?
+
+```{r, warning = FALSE, message = FALSE, results = FALSE, eval = FALSE}
+
+b2stan <- brm(data = covid %>% mutate(B = b2),
+    family = gaussian,
+    formula = num_new_cases ~ 1 + B,
+    prior = c(prior(normal(200, 75), class = Intercept),
+              prior(normal(0,20), class = b),
+              prior(exponential(1), class = sigma)),
+    iter = 4000,
+    warmup = 1000,
+    chains = 4,
+    cores = 4,
+    seed = 5
+    )
+
+ppd <- posterior_predict(b2stan) %>%
+  data.frame() %>%
+  set_names(001:619) %>%
+  sample_n(1000) %>%
+  pivot_longer(1:619, names_to = "day_passed") %>%
+  mutate(day_passed = as.integer(day_passed))
+
+
+# the magical Fitted function
+# draws mean values 
+f <- fitted(b2stan) %>%
+  data.frame() %>%
+  bind_cols(covid)
+
+ggplot() +
+  geom_point(data = ppd, aes(x = day_passed, y = value), alpha = 0.01, size = 0.05, color = "yellow") +
+  geom_ribbon(data = f, aes(x = day_passed, y = Estimate, ymin = Q2.5, ymax = Q97.5), fill = "red", alpha = 0.7) +
+  geom_point(data = f, aes(day_passed, num_new_cases), color = 'blue', alpha = 0.5) +
+  geom_point(data = f, aes(day_passed, Estimate), size = 0.1, color = "green", alpha = 0.5) +
+  geom_hline(yintercept = 0) +
+  labs(title = "Posterior Predictive Check (with 2 knots)",
+       y = "Number of New Cases",
+       x = "Number of Days Passed",
+       subtitle = paste0("Green line = mean of predicted values (with 95% CI in red)\n",
+                        "Blue points = actual values\n",
+                        "Yellow points = predicted points"))
+
+# ggsave(filename = "q3post2.png", width = 5, height = 3, units = "in")
+
+```
+
+![](q3post2.png)
+
+It looks like when we decrease the number of knots the model doesn't match the shape of the data as well. There are less places for the curve to "change" its slope, so it is less wiggly. Let's see what happens when we add way more knots:
+
+```{r, message = FALSE, warning = FALSE, results=FALSE, eval = FALSE}
+# increase knots
+b3 <- covid$day_passed %>% 
+  bs(df = 33, degree = 3) 
+
+b3dat <- list(B = b3,
+              K = 33,
+              n = nrow(covid),
+              Y = covid$num_new_cases)
+
+b3stan <- stan(file = "q3.stan", data = b3dat)
+```
+
+Now let's visualize:
+
+```{r, message = FALSE, warning = FALSE, eval = FALSE}
+
+b3stan <- brm(data = covid %>% mutate(B = b3),
+    family = gaussian,
+    formula = num_new_cases ~ 1 + B,
+    prior = c(prior(normal(200, 75), class = Intercept),
+              prior(normal(0,20), class = b),
+              prior(exponential(1), class = sigma)),
+    iter = 4000,
+    warmup = 1000,
+    chains = 4,
+    cores = 4,
+    seed = 5
+    )
+
+f <- fitted(b3stan) %>%
+  data.frame() %>%
+  bind_cols(covid)
+
+ppd <- posterior_predict(b3stan) %>%
+  data.frame() %>%
+  set_names(001:619) %>%
+  sample_n(1000) %>%
+  pivot_longer(1:619, names_to = "day_passed") %>%
+  mutate(day_passed = as.integer(day_passed))
+
+ggplot() +
+  geom_point(data = ppd, aes(x = day_passed, y = value), alpha = 0.01, size = 0.05, color = "yellow") +
+  geom_ribbon(data = f, aes(x = day_passed, y = Estimate, ymin = Q2.5, ymax = Q97.5), fill = "red", alpha = 0.7) +
+  geom_point(data = f, aes(day_passed, num_new_cases), color = 'blue', alpha = 0.5) +
+  geom_point(data = f, aes(day_passed, Estimate), size = 0.1, color = "green", alpha = 0.5) +
+  geom_hline(yintercept = 0) +
+  labs(title = "Posterior Predictive Check (with 30 knots)",
+       y = "Number of New Cases",
+       x = "Number of Days Passed",
+       subtitle = paste0("Green line = mean of predicted values (with 95% CI in red)\n",
+                        "Blue points = actual values\n",
+                        "Yellow points = predicted points"))
+
+# ggsave(filename = "q3post3.png", width = 5, height = 3, units = "in")
+```
+
+![](q3post3.png)
+
+The fit with 30 knots is much tighter to the data. It still doesn't capture $0$ new cases on day $0$, but that may be because of my intercept prior for $a$. I've been using default knot locations, so what happens when we change that?
+
+```{r, message = FALSE, warning = FALSE, results= FALSE, eval = FALSE}
+
+# using quantiles, 10 knots
+
+k <- quantile(covid$day_passed, probs = seq(0, 1, length.out = 10))
+
+b4 <- bs(covid$day_passed,
+        knots = k, 
+        degree = 3)
+
+b4stan <- brm(data = covid %>% mutate(B = b4),
+    family = gaussian,
+    formula = num_new_cases ~ 1 + B,
+    prior = c(prior(normal(200, 75), class = Intercept),
+              prior(normal(0,20), class = b),
+              prior(exponential(1), class = sigma)),
+    iter = 4000,
+    warmup = 1000,
+    chains = 4,
+    cores = 4,
+    seed = 5
+    )
+
+```
+
+
+```{r, warning = FALSE, message = FALSE, warning = FALSE, eval = FALSE}
+
+
+f <- fitted(b4stan) %>%
+  data.frame() %>%
+  bind_cols(covid)
+
+ppd <- posterior_predict(b4stan) %>%
+  data.frame() %>%
+  set_names(001:619) %>%
+  sample_n(1000) %>%
+  pivot_longer(1:619, names_to = "day_passed") %>%
+  mutate(day_passed = as.integer(day_passed))
+
+ggplot() +
+  geom_point(data = ppd, aes(x = day_passed, y = value), alpha = 0.01, size = 0.05, color = "yellow") +
+  geom_ribbon(data = f, aes(x = day_passed, y = Estimate, ymin = Q2.5, ymax = Q97.5), fill = "red", alpha = 0.7) +
+  geom_point(data = f, aes(day_passed, num_new_cases), color = 'blue', alpha = 0.5) +
+  geom_point(data = f, aes(day_passed, Estimate), size = 0.1, color = "green", alpha = 0.5) +
+  geom_hline(yintercept = 0) +
+  labs(title = "Posterior Predictive Check (with 10 knots, positions based on quantiles)",
+       y = "Number of New Cases",
+       x = "Number of Days Passed",
+       subtitle = paste0("Green line = mean of predicted values (with 95% CI in red)\n",
+                        "Blue points = actual values\n",
+                        "Yellow points = predicted points"))
+
+# ggsave(filename = "q3post4.png", width = 5, height = 3, units = "in")
+```
+
+![](q3post4.png)
+
+It looks like changing the positions of the knots caused the model to be more accurate on the day $0$ prediction, and it seemed to capture the curves better (except for the blip at the beginning) than using the default knot positions visualized in the first posterior prediction check. I'm guessing that if we use quantile-based knots, as well as more knots, we will further improve our predictions:
+
+```{r, warning= FALSE, message = FALSE, result = FALSE, eval = FALSE}
+
+# let's bump up the number of knots
+
+k <- quantile(covid$day_passed, probs = seq(0, 1, length.out = 15))
+
+b5 <- bs(covid$day_passed,
+        knots = k, 
+        degree = 3)
+
+b5stan <- brm(data = covid %>% mutate(B = b5),
+    family = gaussian,
+    formula = num_new_cases ~ 1 + B,
+    prior = c(prior(normal(200, 75), class = Intercept),
+              prior(normal(0,20), class = b),
+              prior(exponential(1), class = sigma)),
+    iter = 4000,
+    warmup = 1000,
+    chains = 4,
+    cores = 4,
+    seed = 5
+    )
+
+```
+
+```{r, warning = FALSE, message = FALSE, eval = FALSE}
+
+f <- fitted(b5stan) %>%
+  data.frame() %>%
+  bind_cols(covid)
+
+ppd <- posterior_predict(b5stan) %>%
+  data.frame() %>%
+  set_names(001:619) %>%
+  sample_n(1000) %>%
+  pivot_longer(1:619, names_to = "day_passed") %>%
+  mutate(day_passed = as.integer(day_passed))
+
+ggplot() +
+  geom_point(data = ppd, aes(x = day_passed, y = value), alpha = 0.01, size = 0.05, color = "yellow") +
+  geom_ribbon(data = f, aes(x = day_passed, y = Estimate, ymin = Q2.5, ymax = Q97.5), fill = "red", alpha = 0.7) +
+  geom_point(data = f, aes(day_passed, num_new_cases), color = 'blue', alpha = 0.5) +
+  geom_point(data = f, aes(day_passed, Estimate), size = 0.1, color = "green", alpha = 0.5) +
+  geom_hline(yintercept = 0) +
+  labs(title = "Posterior Predictive Check (with 15 knots, positions based on quantiles)",
+       y = "Number of New Cases",
+       x = "Number of Days Passed",
+       subtitle = paste0("Green line = mean of predicted values (with 95% CI in red)\n",
+                        "Blue points = actual values\n",
+                        "Yellow points = predicted points"))
+
+# ggsave(filename = "q3post5.png", width = 5, height = 3, units = "in")
+```
+
+![](q3post5.png)
+
+We see a slight improvement in capturing the 2nd wave when increasing the number of knots based on quantiles. Overall there seems to be a necessary balance between choosing functions that are too wiggly, thus potentially leading us to overfit the data, and functions that are too loose and underfit.

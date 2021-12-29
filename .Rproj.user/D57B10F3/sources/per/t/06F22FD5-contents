@@ -1,0 +1,322 @@
+---
+title: "Adiantum PCA - background for bayesian implementation"
+author: "Morgan Southgate"
+date: "6/29/2020"
+output: pdf_document
+editor_options: 
+  chunk_output_type: console
+---
+
+
+# 0.1: Load packages
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+# pca and plotting
+library(ggplot2)
+library(ggfortify)
+library(ggcorrplot)
+library(plotly)
+library(cowplot)
+
+# data management
+library(reshape)
+library(tidyr)
+library(purrr)
+library(plyr)
+library(dplyr)
+
+# niche calculations
+library(hypervolume)
+library(ade4)
+
+```
+
+#0.2: Load Data
+```{r}
+
+micV <- read.csv("adiantum_pca/AdiantumData_FL2020.csv", header=T,sep=",",stringsAsFactors = F)
+
+str(micV)
+
+```
+
+
+#1: Data Management
+
+```{r}
+# eliminate categorical data and unnecessary ecological data
+colnames(micV)
+micV <- micV%>%select(-FlowID,-SporeID,-StomateID,-PatchSize,-RamNum,-RamDens, -MicSlope,-MicAspect,-AdjMicAspect,-final_MicAspect,-MicHs,-MacAspect,-AdjMacAspect,-final_MacAspect,-MacHs,-HsPos,-DepSoil,-TexComp,-Ca.Mg)
+## also eliminate Soil depth as variable because it doesn't really mean much in my data collection process. 
+
+# ## eliminate absence plot, sterile hybrids
+micV <- micV%>%filter(SpeciesFinal!="T")%>%filter(SpeciesFinal!="0")%>%filter(SpeciesFinal!="A?")%>%filter(SpeciesFinal!="V?")
+unique(micV$SpeciesFinal)
+```
+
+## Correlation
+```{r}
+# get pearson correlation coefficients
+# default is to compute correlation only for records with complete information.
+str(micV)
+cortabR <- round(cor(micV[,12:40]),2)
+
+# # Compute a matrix of correlation p-values
+p.mat <- cor_pmat(micV[,12:40])
+head(p.mat[, 1:4])
+
+# correlation plot
+ggcorrplot(cortabR)
+
+# reorder using hierarchical clustering
+ggcorrplot(cortabR, hc.order = TRUE, type="lower",outline.col = "white",lab=T,lab_size = 2)
+
+# barring non-significant coefficient results from p.mat
+ggcorrplot(cortabR, hc.order = TRUE, type="lower",outline.col = "white",p.mat=p.mat)
+
+
+```
+
+## select final vars
+*Greater than 0.75?*
+micro and macro slope strongly positively correlated
+Ca and Ca_BS strongly positively correlated
+Zn and Cd strongly positively correlated
+K and K_BS strongly positively correlated
+Ca_BS is strongly negatively correlated with both Mg and Mg_BS
+ExchAcid and pH strongly negatively correlated
+
+```{r}
+micV <- micV%>%select(-Ca_BS,-Zn,-K_BS,-Mg_BS,-Ca_BS, -ExchAcid)
+str(micV)
+
+```
+
+
+#2: Data Distribution
+## Melt data
+```{r}
+# raw data
+micV_melt <- melt(micV,id.vars="SitePatch",measure.vars=colnames(micV[,12:35]))
+head(micV_melt)
+str(micV_melt)
+```
+
+## plot individual vars
+```{r}
+# plot all at once
+ggplot(micV_melt,aes(x=value))+
+  geom_density()+
+  facet_wrap(~variable,scales="free")
+
+```
+
+
+# 3: PCA
+## 3.1 - Data Prep & Run
+
+#### prep data
+```{r}
+# # reorganize species levels as factors
+
+micV$SpeciesFinal <-factor(micV$SpeciesFinal,levels=c("A","A&V","V","V&P","P"))
+
+micV$SpeciesFinal
+
+# # reorganize state as factor
+micV$State <- factor(micV$State,levels=c("PA","NY","NH","VT","ME","QC","QC_PNG"))
+
+```
+
+#### run pca
+```{r}
+# run pca
+str(micV)
+colnames(micV)
+ad.pca <- prcomp(micV[,c(12:35)],retx=T,center=T,scale.=T)
+
+#View(ad.pca$rotation)
+
+# write csv of loadings
+write.csv(ad.pca$rotation[,1:5],"pca_loadings_1-3.csv")
+
+summary(ad.pca)
+str(ad.pca$x)
+
+# write coords for pc axes 1-3
+pca_coords <- data.frame(micV$SitePatch,ad.pca$x[,1:5])
+
+write.csv(pca_coords,"surv_plot_pca_coords.csv")
+
+```
+
+###  Set colors and variables
+```{r}
+# set colors and shapes
+cols1 <- c("#E41A1C","#FF7F00","#4DAF4A","#377EB8","#984EA3")
+shapes <- c(3,15,7,17,16,8,13)
+
+Species <- micV$Species
+
+```
+
+## 3.2 - Plot
+### 3d pca
+```{r}
+# recombine data in data frame
+data.3d <- data.frame(micV[,1:11],ad.pca$x[,1:6])
+
+# plot using plotly
+plot_ly(data=data.3d,x=~PC1,y=~PC2,z=~PC4,color=~Species,size=1,type="scatter3d",mode="markers",colors=cols1,text=~SitePatch)
+```
+
+
+###  hulls
+#### find hulls
+```{r}
+# # # find convex hulls 1 & 2
+x <- data.frame(Species,ad.pca$x)
+find_hull12 <- function(x) x[chull(x$PC1, x$PC2), ]
+hulls12 <- ddply(x, "Species", find_hull12)
+
+## find convext hulls 2 & 3
+find_hull23 <- function(x) x[chull(x$PC2, x$PC3), ]
+hulls23 <- ddply(x, "Species", find_hull23)
+
+# modify figure to remove hulls for mixed survey plots
+hulls12_mod <- hulls12%>%filter(Species!="A&V")%>%filter(Species!="V&P")
+spp_hull <- hulls12_mod$Species
+cols_hull <- c("#E41A1C","#4DAF4A","#984EA3")
+
+# pc 2 and 3
+hulls23_mod <- hulls23 %>% filter(Species!="A&V")%>%filter(Species!="V&P")
+spp_hull1 <- hulls23_mod$Species
+```
+
+#### plot
+```{r}
+# PC 1 & 2 - plot with hulls 
+pc12 <- ggplot(ad.pca,aes(PC1,PC2))+
+  geom_point(aes(color=Species),size=2.25)+
+  geom_polygon(hulls12_mod,mapping=aes(PC1,PC2,color=spp_hull,fill=spp_hull),alpha=0.2, show.legend=F)+
+  scale_color_manual(values=cols1)+
+  scale_fill_manual(values=cols_hull,guide="none")+
+  theme_bw()+
+  # scale_x_reverse()+
+  # scale_y_reverse()+
+  xlab("PC1 (20.28%)")+
+  ylab("PC2 (15.38%)")+
+  theme(plot.margin=unit(c(0,0.2,0,0.2),"cm"))+
+  theme(axis.title=element_text(size=12))+
+  theme(legend.title=element_text(size=14),legend.text=element_text(size=13))
+
+# PC 2 & 3 - plot with hulls
+pc23 <- ggplot(ad.pca,aes(PC2,PC3))+
+  geom_point(aes(color=Species),size=2.25)+
+  geom_polygon(hulls23_mod,mapping=aes(PC2,PC3,color=spp_hull1,fill=spp_hull1),alpha=0.2,show.legend=F)+
+  scale_color_manual(values=cols1)+
+  scale_fill_manual(values=cols_hull, guide="none")+
+  theme_bw()+
+  # scale_x_reverse()+
+  # scale_y_reverse()+
+  xlab("PC2 (15.38%)")+
+  ylab("PC3 (10.25%)")+
+  theme(plot.margin=unit(c(0,0.2,0,0.2),"cm"))+
+   theme(axis.title=element_text(size=12))+
+  theme(legend.title=element_text(size=14),legend.text=element_text(size=13))
+
+# cowplot of both
+library(cowplot)
+prow <- plot_grid(pc12+theme(legend.position = "none"),
+          pc23+theme(legend.position = "none"))
+
+# extract a legend 
+legend_b <- get_legend(pc12 + theme(legend.box.margin=margin(0,0,0,0)))
+
+# add legend on side of of figure
+prow1 <- plot_grid(prow,legend_b,nrow=1,rel_widths=c(1,.3))
+
+prow1
+
+```
+
+
+
+## 3.3 - PCA tools
+```{r}
+library(PCAtools)
+
+# requires input data to be in specific format; variables in rows, samples in the columns. weird. 
+
+# prep data for transposing
+str(micV)
+data.v <- micV
+rownames(data.v)<- data.v$SitePatch
+str(data.v)
+
+# assign metadata to frame
+metadata <- data.v[,c(1:12)]
+
+# run pca
+#colnames(mat) must be identical to rownames(metadata)
+str(data.v)
+colnames(data.v)
+p <- pca(data.v[,c(12:35)],center=T,scale=T,transposed=T,metadata=metadata)
+
+p$rotated
+
+
+# screeplot - proportion of explained variance by PCA
+screeplot(p)
+
+#biplot
+biplot(p)
+
+#pairsplot
+
+pairsplot(p,colby="SpeciesFinal",legendPosition="left",legendLabSize = 3,trianglelabSize = 10)
+
+pairsplot(p,colby="Species",trianglelabSize = 10,legendLabSize = 1)
+
+# loadings plot
+plotloadings(p,)
+
+# eigencor plot - not working, not sure why. 
+# eigencorplot(p,metavars=c('Zn',"Al","ExchAcid","Mn","Fe","pH","B","DepA"))
+
+# detemrine optimum number of PCs to retain; two methods. Elbow method, and Horn's parallel analysis. 
+
+#parallelPCA function; takes as mat a numeric matrix where rows correspond to variables and columns to samples
+horn <- parallelPCA(as.matrix(data.v[,12:35]),transposed=T)
+
+# error returned are the same one as in demo code
+horn$n # says only 1 pca should be retained
+
+# elbow method
+elbow <- findElbowPoint(p$variance) # 5 PC's
+elbow
+
+#screeplot comparing pc's ientified by horns and elbow
+screeplot(p,
+    components = getComponents(p, 1:20),
+    vline = c(horn$n, elbow)) +
+    geom_text(aes(horn$n + 1, 50, label = "Horn's", vjust = -1)) +
+    geom_text(aes(elbow + 1, 50, label = "Elbow", vjust = -1))
+
+# plot loadings - determine the variables falling within the top/bottom 1% of the loadings range, and then creates a final consensus of these. 
+micro_loadings<- plotloadings(p,components=getComponents(p,seq_len(3)),rangeRetain = 0.05,labSiz=2,title='loadings plot',subtitle = 'PC1, PC2, PC3',caption = 'Top 5% variables', shape = 21,
+drawConnectors = TRUE)
+
+micro_loadings
+
+```
+
+##3.4 - final figure
+```{r}
+
+plot_grid(prow1,micro_loadings,nrow=2,rel_heights=c(0.5,0.5))
+
+```
+
+
+

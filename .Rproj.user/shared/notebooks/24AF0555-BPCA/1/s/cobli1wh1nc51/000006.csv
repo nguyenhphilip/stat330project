@@ -1,0 +1,12 @@
+"0","install.packages(""Rdimtools"")
+"
+"2","also installing the dependencies ‘minpack.lm’, ‘Rmpfr’, ‘ECOSolveR’, ‘scs’, ‘osqp’, ‘Rtsne’, ‘labdsv’, ‘shapes’, ‘dbscan’, ‘CVXR’, ‘RANN’, ‘RcppDE’, ‘RSpectra’, ‘maotai’, ‘mclustcomp’, ‘RcppDist’
+
+"
+"1","
+"
+"1",""
+"1","  There is a binary version available but the source version is later"
+"1",""
+"1",":
+"
